@@ -1,2 +1,9 @@
-rumps>=0.4.0
+# Dùng chung
 browser-cookie3>=0.19.1
+
+# macOS: menu bar
+rumps>=0.4.0; sys_platform == "darwin"
+
+# Linux / Windows: system tray
+pystray>=0.19.5; sys_platform != "darwin"
+Pillow>=9.1.0; sys_platform != "darwin"
