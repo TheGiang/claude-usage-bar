@@ -1,0 +1,2 @@
+rumps>=0.4.0
+browser-cookie3>=0.19.1

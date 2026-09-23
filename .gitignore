@@ -1,0 +1,15 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Local config (chứa sessionKey/cookie cá nhân — KHÔNG commit)
+config.json
+.config/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store

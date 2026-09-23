@@ -1,0 +1,12 @@
+{
+  "_comment": "TUỲ CHỌN. Chỉ cần dùng nếu app không tự đọc được cookie từ trình duyệt. Copy thành ~/.config/claude-usage/config.json rồi điền. TẤT CẢ các trường đều không bắt buộc.",
+
+  "browser": "chrome",
+  "_browser": "Ép đọc cookie từ 1 trình duyệt cụ thể: chrome | brave | edge | chromium | vivaldi | opera | firefox | safari",
+
+  "sessionKey": "sk-ant-sid01-...",
+  "_sessionKey": "Dán thủ công cookie sessionKey của claude.ai nếu không muốn đọc từ trình duyệt.",
+
+  "org_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "_org_id": "Ép org id. Bỏ trống để app tự chọn org gói Claude của bạn."
+}
