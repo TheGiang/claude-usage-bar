@@ -93,9 +93,16 @@ def _make_image(pct):
     d.rounded_rectangle([2, 2, size - 2, size - 2], radius=14, fill=color + (255,))
 
     text = "?" if pct is None else f"{int(round(pct))}"
-    try:
-        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 34 if len(text) < 3 else 26)
-    except Exception:
+    fsize = 34 if len(text) < 3 else 26
+    font = None
+    for name in ("DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf",
+                 "arial.ttf", "Helvetica.ttc", "segoeuib.ttf"):
+        try:
+            font = ImageFont.truetype(name, fsize)
+            break
+        except Exception:
+            continue
+    if font is None:
         font = ImageFont.load_default()
     l, t, r, b = d.textbbox((0, 0), text, font=font)
     d.text(((size - (r - l)) / 2 - l, (size - (b - t)) / 2 - t), text,
