@@ -23,6 +23,16 @@ def _now():
     return dt.datetime.now().strftime("%H:%M:%S")
 
 
+def _pct(p):
+    """% dạng số nguyên gọn (93.0 -> '93')."""
+    return "?" if p is None else f"{int(round(p))}"
+
+
+# U+FE0E = text variation selector: ép glyph tròn render đơn sắc, canh baseline
+# đúng trên menu bar macOS (nếu không macOS hay vẽ nó thành emoji màu, lệch xuống).
+_TEXT_VS = "︎"
+
+
 # ============================================================= macOS (rumps) ====
 
 def run_macos():
@@ -68,9 +78,9 @@ def run_macos():
                 return
             f, s = u["five"], u["seven"]
             self._have_data = True
-            self.title = f"{core.glyph(f)} {f}%" if f is not None else "?"
-            self.m_session.title = f"Session (5h): {f}%  ·  {u['five_reset']}"
-            self.m_week.title = f"Tuần (7d): {s}%  ·  {u['seven_reset']}"
+            self.title = f"{core.glyph(f)}{_TEXT_VS} {_pct(f)}%" if f is not None else "?"
+            self.m_session.title = f"Session (5h): {_pct(f)}%  ·  {u['five_reset']}"
+            self.m_week.title = f"Tuần (7d): {_pct(s)}%  ·  {u['seven_reset']}"
             self.m_updated.title = "Cập nhật: " + _now()
 
     App().run()
@@ -125,19 +135,19 @@ def run_tray():
         g = state["good"]
         if g is None:
             return "Claude Usage — " + (state["note"] or "đang tải…")
-        return (f"Session 5h: {g['five']}%  {g['five_reset']}\n"
-                f"Tuần 7d:   {g['seven']}%  {g['seven_reset']}\n"
+        return (f"Session 5h: {_pct(g['five'])}%  {g['five_reset']}\n"
+                f"Tuần 7d:   {_pct(g['seven'])}%  {g['seven_reset']}\n"
                 + (state["note"] or f"Cập nhật: {_now()}"))
 
     def menu_line(_):
         g = state["good"]
         if g is None:
             return "Lỗi: " + state["note"] if state["note"] else "Đang tải…"
-        return f"Session 5h: {g['five']}%  ·  {g['five_reset']}"
+        return f"Session 5h: {_pct(g['five'])}%  ·  {g['five_reset']}"
 
     def menu_week(_):
         g = state["good"]
-        return "" if g is None else f"Tuần 7d: {g['seven']}%  ·  {g['seven_reset']}"
+        return "" if g is None else f"Tuần 7d: {_pct(g['seven'])}%  ·  {g['seven_reset']}"
 
     icon = pystray.Icon("claude-usage", _make_image(None), "Claude Usage")
 
