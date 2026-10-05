@@ -9,6 +9,7 @@ Không phụ thuộc GUI -> dùng chung cho bản macOS (rumps) và bản tray (
 import datetime as dt
 import json
 import os
+import time
 import urllib.request
 import urllib.error
 
@@ -86,6 +87,9 @@ def _http_get_json(path, cookie):
         headers={
             "Cookie": cookie,
             "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": BASE + "/settings/usage",
+            "Origin": BASE,
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
         },
@@ -94,16 +98,24 @@ def _http_get_json(path, cookie):
         return json.loads(r.read().decode("utf-8"))
 
 
+_ORG_CACHE = None  # nhớ org id để khỏi gọi /api/organizations mỗi lần (bớt cơ hội dính 403)
+
+
 def _pick_org(cookie):
+    global _ORG_CACHE
     cfg = _load_config()
     if cfg.get("org_id"):
         return cfg["org_id"]
+    if _ORG_CACHE:
+        return _ORG_CACHE
     orgs = _http_get_json("/api/organizations", cookie)
     for o in orgs:
         caps = o.get("capabilities") or []
         if "chat" in caps or "claude_pro" in caps or "claude_max" in caps:
-            return o["uuid"]
-    return orgs[0]["uuid"]
+            _ORG_CACHE = o["uuid"]
+            return _ORG_CACHE
+    _ORG_CACHE = orgs[0]["uuid"]
+    return _ORG_CACHE
 
 
 # --------------------------------------------------------------------- format ----
@@ -127,30 +139,55 @@ def fmt_reset(resets_at):
         return ""
 
 
-def fetch_usage():
-    """
-    Trả về dict:
-      ok, five (float|None), five_reset, seven, seven_reset, error (str|None)
-    """
-    try:
-        cookie, _src = _cookie_header()
-        org = _pick_org(cookie)
-        data = _http_get_json(f"/api/organizations/{org}/usage", cookie)
-    except urllib.error.HTTPError as e:
-        return {"ok": False, "error": f"HTTP {e.code} (đăng nhập lại claude.ai?)"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:120]}
+# Mã lỗi tạm thời (Cloudflare/claude.ai thỉnh thoảng trả về) -> cứ thử lại
+_RETRYABLE = {403, 408, 429, 500, 502, 503, 504}
 
-    five = data.get("five_hour") or {}
-    seven = data.get("seven_day") or {}
-    return {
-        "ok": True,
-        "error": None,
-        "five": five.get("utilization"),
-        "five_reset": fmt_reset(five.get("resets_at")),
-        "seven": seven.get("utilization"),
-        "seven_reset": fmt_reset(seven.get("resets_at")),
-    }
+
+def _fetch_once():
+    global _ORG_CACHE
+    cookie, _src = _cookie_header()
+    try:
+        org = _pick_org(cookie)
+        return _http_get_json(f"/api/organizations/{org}/usage", cookie)
+    except urllib.error.HTTPError as e:
+        # Org cache có thể sai -> xoá để lần sau dò lại
+        if e.code in (403, 404):
+            _ORG_CACHE = None
+        raise
+
+
+def fetch_usage(retries=4, backoff=1.2):
+    """
+    Trả về dict: ok, five, five_reset, seven, seven_reset, error.
+    Tự retry khi gặp lỗi tạm thời (403/429/5xx...) giống như bấm "Làm mới".
+    """
+    last = "lỗi không rõ"
+    for attempt in range(retries):
+        try:
+            data = _fetch_once()
+            five = data.get("five_hour") or {}
+            seven = data.get("seven_day") or {}
+            return {
+                "ok": True,
+                "error": None,
+                "five": five.get("utilization"),
+                "five_reset": fmt_reset(five.get("resets_at")),
+                "seven": seven.get("utilization"),
+                "seven_reset": fmt_reset(seven.get("resets_at")),
+            }
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code} (đăng nhập lại claude.ai?)"
+            retryable = e.code in _RETRYABLE
+        except Exception as e:
+            last = str(e)[:120]
+            retryable = True  # lỗi mạng tạm thời
+
+        if attempt < retries - 1 and retryable:
+            time.sleep(backoff * (attempt + 1))  # 1.2s, 2.4s, 3.6s...
+            continue
+        break
+
+    return {"ok": False, "error": last}
 
 
 if __name__ == "__main__":  # test nhanh: python3 claude_usage_core.py

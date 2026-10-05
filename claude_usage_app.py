@@ -31,6 +31,7 @@ def run_macos():
     class App(rumps.App):
         def __init__(self):
             super().__init__("Claude", title="⋯", quit_button=None)
+            self._have_data = False
             self.m_session = rumps.MenuItem("Session (5h): …")
             self.m_week = rumps.MenuItem("Tuần (7d): …")
             self.m_updated = rumps.MenuItem("Chưa cập nhật")
@@ -57,11 +58,16 @@ def run_macos():
         def _refresh(self):
             u = core.fetch_usage()
             if not u["ok"]:
-                self.title = "⚠︎"
-                self.m_session.title = "Lỗi: " + u["error"]
-                self.m_updated.title = "Cập nhật: " + _now()
+                # Giữ nguyên số tốt gần nhất, chỉ báo lỗi nhẹ ở dòng trạng thái
+                if self._have_data:
+                    self.m_updated.title = f"⚠ lỗi lúc {_now()} — đang giữ số cũ"
+                else:
+                    self.title = "⚠︎"
+                    self.m_session.title = "Lỗi: " + u["error"]
+                    self.m_updated.title = "Cập nhật: " + _now()
                 return
             f, s = u["five"], u["seven"]
+            self._have_data = True
             self.title = f"{core.glyph(f)} {f}%" if f is not None else "?"
             self.m_session.title = f"Session (5h): {f}%  ·  {u['five_reset']}"
             self.m_week.title = f"Tuần (7d): {s}%  ·  {u['seven_reset']}"
@@ -113,36 +119,38 @@ def _make_image(pct):
 def run_tray():
     import pystray
 
-    state = {"u": None}
+    state = {"good": None, "note": ""}  # good = lần lấy thành công gần nhất
 
     def title_text():
-        u = state["u"]
-        if u is None:
-            return "Claude Usage — đang tải…"
-        if not u["ok"]:
-            return "Claude Usage — lỗi: " + u["error"]
-        return (f"Session 5h: {u['five']}%  {u['five_reset']}\n"
-                f"Tuần 7d:   {u['seven']}%  {u['seven_reset']}\n"
-                f"Cập nhật: {_now()}")
+        g = state["good"]
+        if g is None:
+            return "Claude Usage — " + (state["note"] or "đang tải…")
+        return (f"Session 5h: {g['five']}%  {g['five_reset']}\n"
+                f"Tuần 7d:   {g['seven']}%  {g['seven_reset']}\n"
+                + (state["note"] or f"Cập nhật: {_now()}"))
 
     def menu_line(_):
-        u = state["u"]
-        if u is None:
-            return "Đang tải…"
-        if not u["ok"]:
-            return "Lỗi: " + u["error"]
-        return f"Session 5h: {u['five']}%  ·  {u['five_reset']}"
+        g = state["good"]
+        if g is None:
+            return "Lỗi: " + state["note"] if state["note"] else "Đang tải…"
+        return f"Session 5h: {g['five']}%  ·  {g['five_reset']}"
 
     def menu_week(_):
-        u = state["u"]
-        return "" if (u is None or not u["ok"]) else f"Tuần 7d: {u['seven']}%  ·  {u['seven_reset']}"
+        g = state["good"]
+        return "" if g is None else f"Tuần 7d: {g['seven']}%  ·  {g['seven_reset']}"
 
     icon = pystray.Icon("claude-usage", _make_image(None), "Claude Usage")
 
     def refresh(_=None, __=None):
         u = core.fetch_usage()
-        state["u"] = u
-        pct = u["five"] if u["ok"] else None
+        if u["ok"]:
+            state["good"] = u
+            state["note"] = f"Cập nhật: {_now()}"
+        else:
+            # giữ số cũ, chỉ ghi chú lỗi
+            state["note"] = (f"⚠ lỗi lúc {_now()} — giữ số cũ"
+                             if state["good"] else u["error"])
+        pct = state["good"]["five"] if state["good"] else None
         icon.icon = _make_image(pct)
         icon.title = title_text()
         icon.menu = pystray.Menu(
