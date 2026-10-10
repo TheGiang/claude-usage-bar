@@ -32,24 +32,65 @@ def _pct(p):
 # đúng trên menu bar macOS (nếu không macOS hay vẽ nó thành emoji màu, lệch xuống).
 _TEXT_VS = "︎"
 
+# Session vượt ngưỡng này -> hiển thị đỏ cảnh báo
+RED_AT = 80
+
 
 # ============================================================= macOS (rumps) ====
 
 def run_macos():
+    import objc
     import rumps
+    from AppKit import (NSView, NSTextField, NSClickGestureRecognizer, NSColor,
+                        NSFont, NSAttributedString, NSForegroundColorAttributeName)
+    from Foundation import NSObject, NSMakeRect
+
+    # Đối tượng nhận click từ gesture recognizer (menu không đóng khi click trong view)
+    class _Toggler(NSObject):
+        def initWithCb_(self, cb):
+            self = objc.super(_Toggler, self).init()
+            if self is None:
+                return None
+            self._cb = cb
+            return self
+
+        def onClick_(self, _recognizer):
+            self._cb()
+
+    def _label(frame, size, dim=False):
+        lb = NSTextField.alloc().initWithFrame_(frame)
+        lb.setBezeled_(False)
+        lb.setDrawsBackground_(False)
+        lb.setEditable_(False)
+        lb.setSelectable_(False)
+        lb.setFont_(NSFont.menuFontOfSize_(size))
+        lb.setTextColor_(NSColor.secondaryLabelColor() if dim else NSColor.labelColor())
+        return lb
 
     class App(rumps.App):
         def __init__(self):
             super().__init__("Claude", title="⋯", quit_button=None)
             self._last = None          # số tốt gần nhất (dict từ fetch_usage)
             self._reset_abs = False    # False = "còn ..."  ·  True = "lúc HH:MM"
-            # Bấm vào dòng Session/Tuần để đổi kiểu hiển thị giờ reset
-            self.m_session = rumps.MenuItem("Session (5h): …", callback=self.on_toggle_reset)
-            self.m_week = rumps.MenuItem("Tuần (7d): …", callback=self.on_toggle_reset)
+
+            # --- Panel 2 dòng dạng custom view: bấm để đổi giờ reset, menu KHÔNG đóng ---
+            w, h = 260, 66
+            view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+            self._lbl_session = _label(NSMakeRect(14, 42, w - 28, 18), 13)
+            self._lbl_week = _label(NSMakeRect(14, 22, w - 28, 18), 13)
+            self._lbl_hint = _label(NSMakeRect(14, 4, w - 28, 14), 10, dim=True)
+            self._lbl_hint.setStringValue_("bấm để đổi giờ reset ↔")
+            for lb in (self._lbl_session, self._lbl_week, self._lbl_hint):
+                view.addSubview_(lb)
+            self._toggler = _Toggler.alloc().initWithCb_(self._toggle_reset)
+            gr = NSClickGestureRecognizer.alloc().initWithTarget_action_(self._toggler, b"onClick:")
+            view.addGestureRecognizer_(gr)
+            self.m_panel = rumps.MenuItem("")
+            self.m_panel._menuitem.setView_(view)
+
             self.m_updated = rumps.MenuItem("Chưa cập nhật")
             self.menu = [
-                self.m_session,
-                self.m_week,
+                self.m_panel,
                 None,
                 self.m_updated,
                 rumps.MenuItem("Làm mới ngay", callback=self.on_refresh),
@@ -61,12 +102,11 @@ def run_macos():
             self.refresh_async()
 
         def on_refresh(self, _):
-            self.title = "⟳"
             self.refresh_async()
 
-        def on_toggle_reset(self, _):
+        def _toggle_reset(self):
             self._reset_abs = not self._reset_abs
-            self._render_lines()
+            self._render_lines()  # cập nhật tại chỗ, panel vẫn mở
 
         def refresh_async(self):
             threading.Thread(target=self._refresh, daemon=True).start()
@@ -75,28 +115,46 @@ def run_macos():
             key = f"{which}_reset_abs" if self._reset_abs else f"{which}_reset"
             return u.get(key) or u.get(f"{which}_reset") or ""
 
+        def _set_title(self, text, red):
+            """Đặt title menu bar; tô đỏ toàn bộ khi cảnh báo."""
+            self.title = text  # giữ layout/độ rộng của rumps
+            try:
+                btn = self._nsapp.nsstatusitem.button()
+                if btn is None:
+                    return
+                color = NSColor.systemRedColor() if red else NSColor.labelColor()
+                attr = NSAttributedString.alloc().initWithString_attributes_(
+                    text, {NSForegroundColorAttributeName: color})
+                btn.setAttributedTitle_(attr)
+            except Exception:
+                pass
+
         def _render_lines(self):
-            """Vẽ lại 2 dòng Session/Tuần theo số gần nhất + kiểu giờ hiện tại."""
             u = self._last
             if not u:
                 return
-            self.m_session.title = f"Session (5h): {_pct(u['five'])}%  ·  {self._reset_str(u, 'five')}"
-            self.m_week.title = f"Tuần (7d): {_pct(u['seven'])}%  ·  {self._reset_str(u, 'seven')}"
+            self._lbl_session.setStringValue_(
+                f"Session (5h): {_pct(u['five'])}%   ·   {self._reset_str(u, 'five')}")
+            self._lbl_week.setStringValue_(
+                f"Tuần (7d): {_pct(u['seven'])}%   ·   {self._reset_str(u, 'seven')}")
 
         def _refresh(self):
             u = core.fetch_usage()
             if not u["ok"]:
-                # Giữ nguyên số tốt gần nhất, chỉ báo lỗi nhẹ ở dòng trạng thái
                 if self._last:
                     self.m_updated.title = f"⚠ lỗi lúc {_now()} — đang giữ số cũ"
                 else:
-                    self.title = "⚠︎"
-                    self.m_session.title = "Lỗi: " + u["error"]
+                    self._set_title("⚠︎", True)
+                    self._lbl_session.setStringValue_("Lỗi: " + u["error"])
                     self.m_updated.title = "Cập nhật: " + _now()
                 return
             self._last = u
             f = u["five"]
-            self.title = f"{core.glyph(f)}{_TEXT_VS} {_pct(f)}%" if f is not None else "?"
+            if f is not None:
+                red = f >= RED_AT
+                self._set_title(f"{core.glyph(f)}{_TEXT_VS} {_pct(f)}%", red)
+            else:
+                self._set_title("?", False)
             self._render_lines()
             self.m_updated.title = "Cập nhật: " + _now()
 
@@ -122,7 +180,12 @@ def _make_image(pct):
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    color = _LEVEL_COLORS[core.level(pct)] if pct is not None else (120, 120, 120)
+    if pct is None:
+        color = (120, 120, 120)
+    elif pct >= RED_AT:
+        color = (217, 48, 37)  # đỏ cảnh báo khi >80%
+    else:
+        color = _LEVEL_COLORS[core.level(pct)]
     d.rounded_rectangle([2, 2, size - 2, size - 2], radius=14, fill=color + (255,))
 
     text = "?" if pct is None else f"{int(round(pct))}"
