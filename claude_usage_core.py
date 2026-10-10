@@ -139,6 +139,20 @@ def fmt_reset(resets_at):
         return ""
 
 
+def fmt_reset_abs(resets_at):
+    """resets_at ISO -> giờ reset cụ thể theo giờ máy: 'lúc 21:19' / 'lúc 21:19 11/10'."""
+    if not resets_at:
+        return ""
+    try:
+        t = dt.datetime.fromisoformat(resets_at.replace("Z", "+00:00")).astimezone()
+        now = dt.datetime.now().astimezone()
+        if t.date() == now.date():
+            return "lúc " + t.strftime("%H:%M")
+        return "lúc " + t.strftime("%H:%M %d/%m")
+    except Exception:
+        return ""
+
+
 # Mã lỗi tạm thời (Cloudflare/claude.ai thỉnh thoảng trả về) -> cứ thử lại
 _RETRYABLE = {403, 408, 429, 500, 502, 503, 504}
 
@@ -172,8 +186,10 @@ def fetch_usage(retries=4, backoff=1.2):
                 "error": None,
                 "five": five.get("utilization"),
                 "five_reset": fmt_reset(five.get("resets_at")),
+                "five_reset_abs": fmt_reset_abs(five.get("resets_at")),
                 "seven": seven.get("utilization"),
                 "seven_reset": fmt_reset(seven.get("resets_at")),
+                "seven_reset_abs": fmt_reset_abs(seven.get("resets_at")),
             }
         except urllib.error.HTTPError as e:
             last = f"HTTP {e.code} (đăng nhập lại claude.ai?)"
