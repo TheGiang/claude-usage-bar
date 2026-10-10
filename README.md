@@ -6,19 +6,16 @@ as `claude.ai/settings/usage` — in your menu bar / system tray.
 *Ứng dụng nhỏ hiển thị **% usage của Claude** (giống trang `claude.ai/settings/usage`)
 ngay trên menu bar (macOS) hoặc system tray (Linux / Windows).*
 
-```
-◔ 7%        ← macOS menu bar        [ 7 ]  ← Linux/Windows tray icon
+<p align="center">
+  <img src="docs/screenshot-macos.png" alt="Claude Usage Bar on the macOS menu bar" width="420">
+</p>
 
-Session (5h): 7%   ·  resets in 4h49m
-Week (7d):   38%   ·  resets in 3d10h
-Updated: 14:32:07
-Refresh now
-Quit
-```
-
-- **macOS** → text in the menu bar (`○ ◔ ◑ ◕ ●` fills as usage grows).
+- **macOS** → percentage in the menu bar (`○ ◔ ◑ ◕ ●` fills as usage grows; turns
+  **red** above 80%).
 - **Linux / Windows** → a colored tray icon with the % (green → yellow → red);
   hover for details, right-click for the menu.
+- **Click the Session / Week line** to toggle the reset time between relative
+  (`còn 4h52m`) and absolute (`lúc 02:40 11/10`) — the menu stays open.
 
 ## How it works
 
