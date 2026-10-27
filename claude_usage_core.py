@@ -14,7 +14,11 @@ import urllib.request
 import urllib.error
 
 BASE = "https://claude.ai"
-CONFIG_PATH = os.path.expanduser("~/.config/claude-usage/config.json")
+CONFIG_PATH = (os.environ.get("CLAUDE_USAGE_CONFIG")
+               or os.path.expanduser("~/.config/claude-usage/config.json"))
+
+DEFAULT_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
 # Các trình duyệt sẽ thử đọc cookie (theo thứ tự). Ép 1 cái qua config
 # {"browser": "brave"} hoặc biến môi trường CLAUDE_USAGE_BROWSER=brave.
@@ -41,10 +45,95 @@ def glyph(pct):
 
 def _load_config():
     try:
-        with open(CONFIG_PATH) as f:
+        # utf-8-sig: chấp nhận file có BOM (Notepad / PowerShell hay thêm) và luôn đọc UTF-8
+        with open(CONFIG_PATH, encoding="utf-8-sig") as f:
             return json.load(f)
     except Exception:
         return {}
+
+
+def save_session_key(raw):
+    """
+    Lưu sessionKey người dùng dán vào config.json (giữ nguyên các mục khác) và trả về đường dẫn file.
+    Chấp nhận dán cả dạng 'sessionKey=...; ...' hoặc có dấu nháy.
+    """
+    global _ORG_CACHE
+    key = (raw or "").strip().strip("\"'")
+    if key.lower().startswith("sessionkey="):
+        key = key.split("=", 1)[1]
+    key = key.split(";")[0].strip()
+    if not key:
+        raise ValueError("sessionKey rỗng")
+
+    cfg = _load_config()
+    cfg["sessionKey"] = key
+    cfg.pop("cookie", None)      # 'cookie' được ưu tiên hơn sessionKey -> bỏ để khoá mới có hiệu lực
+    cfg.pop("user_agent", None)  # UA cũ thuộc về phiên đăng nhập trước
+    _write_config(cfg)
+    _ORG_CACHE = None
+    return CONFIG_PATH
+
+
+def save_login(cookie_header, user_agent=None):
+    """Lưu phiên đăng nhập lấy từ cửa sổ đăng nhập của app: toàn bộ cookie claude.ai + UA."""
+    global _ORG_CACHE
+    cfg = _load_config()
+    cfg["cookie"] = cookie_header
+    if user_agent:
+        cfg["user_agent"] = user_agent
+    cfg.pop("sessionKey", None)  # tránh nhầm với khoá dán tay cũ
+    _write_config(cfg)
+    _ORG_CACHE = None
+    return CONFIG_PATH
+
+
+def get_setting(key, default=None):
+    return _load_config().get(key, default)
+
+
+def update_config(**values):
+    """Gộp các cài đặt (vd widget=True, widget_pos=[x, y]) vào config.json, giữ nguyên mục khác."""
+    cfg = _load_config()
+    cfg.update(values)
+    _write_config(cfg)
+
+
+def _write_config(cfg):
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    try:
+        os.chmod(CONFIG_PATH, 0o600)  # trên Windows gần như không có tác dụng, vô hại
+    except OSError:
+        pass
+
+
+def _import_browser_cookie3():
+    """
+    Import browser_cookie3 ngay cả khi không có `lz4`.
+
+    browser_cookie3 `import lz4.block` ở đầu file, nhưng chỉ dùng nó để đọc cookie
+    session của Firefox. lz4 chưa có wheel cho Python mới (vd 3.15 trên Windows) và
+    phải biên dịch C, nên khi thiếu ta nạp một module giả: Chrome/Edge/Brave/Safari
+    chạy bình thường, riêng cookie session Firefox bị bỏ qua.
+    """
+    try:
+        import lz4.block  # noqa: F401
+    except Exception:
+        import sys
+        import types
+
+        def _unavailable(*_a, **_k):
+            raise RuntimeError("lz4 không khả dụng")
+
+        block = types.ModuleType("lz4.block")
+        block.decompress = _unavailable
+        pkg = types.ModuleType("lz4")
+        pkg.block = block
+        sys.modules["lz4"], sys.modules["lz4.block"] = pkg, block
+
+    import browser_cookie3
+    return browser_cookie3
 
 
 def _cookie_header():
@@ -55,7 +144,7 @@ def _cookie_header():
     if cfg.get("sessionKey"):
         return f"sessionKey={cfg['sessionKey']}", "config.sessionKey"
 
-    import browser_cookie3
+    browser_cookie3 = _import_browser_cookie3()
 
     pref = cfg.get("browser") or os.environ.get("CLAUDE_USAGE_BROWSER")
     names = [pref] + [b for b in BROWSERS if b != pref] if pref else BROWSERS
@@ -72,6 +161,12 @@ def _cookie_header():
                 return "; ".join(parts), name
         except Exception as e:
             errors.append(f"{name}: {str(e)[:60]}")
+
+    # Chrome/Edge mới trên Windows mã hoá cookie kiểu App-Bound: chỉ đọc được khi chạy Admin.
+    # Thông báo ngắn (tooltip tray Windows giới hạn ~128 ký tự) và nêu đúng lối ra.
+    if any("admin" in e.lower() for e in errors):
+        raise RuntimeError("Không đọc được cookie Chrome. "
+                           "Chuột phải icon → 'Đăng nhập claude.ai…'")
 
     raise RuntimeError(
         "Không đọc được cookie claude.ai từ trình duyệt nào. "
@@ -90,8 +185,8 @@ def _http_get_json(path, cookie):
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": BASE + "/settings/usage",
             "Origin": BASE,
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
+            # Sau khi đăng nhập trong app, dùng đúng UA của trình duyệt đó (cookie Cloudflare gắn với UA)
+            "User-Agent": _load_config().get("user_agent") or DEFAULT_UA,
         },
     )
     with urllib.request.urlopen(req, timeout=15) as r:
@@ -135,6 +230,26 @@ def fmt_reset(resets_at):
         if h:
             return f"còn {h}h{m:02d}m"
         return f"còn {m}m"
+    except Exception:
+        return ""
+
+
+def fmt_reset_long(resets_at):
+    """resets_at ISO -> 'Còn 2 giờ 23 phút' / 'Còn khoảng 4 ngày 7 giờ' / '' nếu không có."""
+    if not resets_at:
+        return ""
+    try:
+        t = dt.datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+        secs = int((t - dt.datetime.now(dt.timezone.utc)).total_seconds())
+        if secs <= 0:
+            return "Sắp đặt lại"
+        h, m = secs // 3600, (secs % 3600) // 60
+        if h >= 24:
+            d, h = divmod(h, 24)
+            return f"Còn khoảng {d} ngày" + (f" {h} giờ" if h else "")
+        if h:
+            return f"Còn {h} giờ" + (f" {m} phút" if m else "")
+        return f"Còn {max(m, 1)} phút"
     except Exception:
         return ""
 
@@ -187,9 +302,11 @@ def fetch_usage(retries=4, backoff=1.2):
                 "five": five.get("utilization"),
                 "five_reset": fmt_reset(five.get("resets_at")),
                 "five_reset_abs": fmt_reset_abs(five.get("resets_at")),
+                "five_reset_long": fmt_reset_long(five.get("resets_at")),
                 "seven": seven.get("utilization"),
                 "seven_reset": fmt_reset(seven.get("resets_at")),
                 "seven_reset_abs": fmt_reset_abs(seven.get("resets_at")),
+                "seven_reset_long": fmt_reset_long(seven.get("resets_at")),
             }
         except urllib.error.HTTPError as e:
             last = f"HTTP {e.code} (đăng nhập lại claude.ai?)"
