@@ -163,53 +163,77 @@ def run_macos():
 
 # ================================================= Linux / Windows (pystray) ====
 
-# Màu icon theo mức đầy (0..4)
-_LEVEL_COLORS = [
-    (52, 168, 83),    # xanh lá
-    (52, 168, 83),
-    (251, 188, 4),    # vàng
-    (244, 132, 20),   # cam
-    (217, 48, 37),    # đỏ
-]
+# Màu số trên icon tray: xanh khi bình thường, đỏ khi session >= RED_AT, xám khi chưa có số
+_COLOR_OK = (30, 200, 90)
+_COLOR_WARN = (255, 59, 48)
+_COLOR_UNKNOWN = (150, 150, 150)
+
+
+def _load_bold_font(size):
+    from PIL import ImageFont
+    # Arial Black (Windows) cho nét dày nhất -> số còn rõ khi bị ép cao và thu nhỏ còn 16 px
+    for name in ("ariblk.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf", "Arial Bold.ttf",
+                 "segoeuib.ttf", "arial.ttf", "Helvetica.ttc"):
+        try:
+            return ImageFont.truetype(name, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
 
 
 def _make_image(pct):
-    """Vẽ icon tray: nền bo tròn màu theo mức + số % ở giữa."""
-    from PIL import Image, ImageDraw, ImageFont
+    """
+    Vẽ icon tray: chỉ có số %, không nền; xanh bình thường, đỏ khi >= RED_AT.
+
+    Mỗi chữ số có kích thước CỐ ĐỊNH, không phụ thuộc giá trị ("5" và từng chữ số của
+    "99" to bằng nhau): hệ số phóng được đo từ bộ chữ số 0-9, không phải từ chuỗi đang vẽ.
+    Tối đa 2 chữ số vừa khít canvas; riêng "100" phải ép hẹp lại để đủ 3 chữ số.
+    """
+    from PIL import Image, ImageDraw
 
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
     if pct is None:
-        color = (120, 120, 120)
+        color = _COLOR_UNKNOWN
     elif pct >= RED_AT:
-        color = (217, 48, 37)  # đỏ cảnh báo khi >80%
+        color = _COLOR_WARN
     else:
-        color = _LEVEL_COLORS[core.level(pct)]
-    d.rounded_rectangle([2, 2, size - 2, size - 2], radius=14, fill=color + (255,))
+        color = _COLOR_OK
 
     text = "?" if pct is None else f"{int(round(pct))}"
-    fsize = 34 if len(text) < 3 else 26
-    font = None
-    for name in ("DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf",
-                 "arial.ttf", "Helvetica.ttc", "segoeuib.ttf"):
-        try:
-            font = ImageFont.truetype(name, fsize)
-            break
-        except Exception:
-            continue
-    if font is None:
-        font = ImageFont.load_default()
-    l, t, r, b = d.textbbox((0, 0), text, font=font)
-    d.text(((size - (r - l)) / 2 - l, (size - (b - t)) / 2 - t), text,
-           font=font, fill=(255, 255, 255, 255))
+    n = len(text)
+
+    font = _load_bold_font(200)
+    adv = font.getlength("0")                                  # bề ngang 1 ô chữ số (cố định)
+    top = min(font.getbbox(c)[1] for c in "0123456789")
+    bot = max(font.getbbox(c)[3] for c in "0123456789")
+    vh = bot - top                                             # chiều cao chữ số (cố định)
+
+    layer = Image.new("L", (max(1, round(adv * n)), vh), 0)
+    ImageDraw.Draw(layer).text((0, -top), text, font=font, fill=255)
+
+    sx = (size / max(2, n)) / adv                              # mỗi chữ số rộng size/2 (hoặc size/3)
+    sy = (size - 2) / vh                                       # cao gần kín canvas
+    nw, nh = max(1, round(adv * n * sx)), max(1, round(vh * sy))
+    layer = layer.resize((nw, nh), Image.LANCZOS)
+    img.paste(Image.new("RGBA", (nw, nh), color + (255,)),
+              ((size - nw) // 2, (size - nh) // 2), layer)
     return img
 
 
 def run_tray():
     import pystray
+    from claude_usage_widget import ANCHOR_KEYS, ANCHORS
 
-    state = {"good": None, "note": "", "abs": False}  # abs: kiểu giờ reset
+    # abs: kiểu giờ reset · logging_in: cửa sổ đăng nhập đang mở (tạm dừng tự làm mới)
+    # widget_on: widget nổi ở góc trái taskbar (xem claude_usage_widget.py), nhớ qua config.json
+    state = {"good": None, "note": "", "abs": False, "logging_in": False,
+             "widget_on": bool(core.get_setting("widget", False)), "widget": None,
+             # điểm neo của widget: bottom-left | bottom-right | top-left | top-right | free
+             # chưa chọn bao giờ: ai đã tự kéo widget từ trước (có widget_pos) giữ chế độ tự do
+             "anchor": (lambda a: a if a in ANCHOR_KEYS else "bottom-left")(
+                 core.get_setting("widget_anchor")
+                 or ("free" if core.get_setting("widget_pos") else "bottom-left"))}
 
     def _reset_str(g, which):
         key = f"{which}_reset_abs" if state["abs"] else f"{which}_reset"
@@ -226,7 +250,7 @@ def run_tray():
     def menu_line(_):
         g = state["good"]
         if g is None:
-            return "Lỗi: " + state["note"] if state["note"] else "Đang tải…"
+            return state["note"] or "Đang tải…"
         return f"Session 5h: {_pct(g['five'])}%  ·  {_reset_str(g, 'five')}"
 
     def menu_week(_):
@@ -235,11 +259,117 @@ def run_tray():
 
     icon = pystray.Icon("claude-usage", _make_image(None), "Claude Usage")
 
+    def _widget_info():
+        """Số liệu gần nhất cho widget + panel mở rộng (None nếu chưa có)."""
+        g = state["good"]
+        if not g:
+            return {"five": None, "seven": None}
+        return {"five": g["five"], "seven": g["seven"],
+                "five_long": g.get("five_reset_long"), "five_abs": g.get("five_reset_abs"),
+                "seven_long": g.get("seven_reset_long"), "seven_abs": g.get("seven_reset_abs")}
+
+    def _in_thread(fn):
+        """Callback của widget chạy trong thread Tk của nó -> việc nặng/chặn đưa sang thread riêng."""
+        return lambda: threading.Thread(target=fn, daemon=True).start()
+
+    def get_widget():
+        if state["widget"] is None:
+            from claude_usage_widget import Widget
+            state["widget"] = Widget(
+                on_refresh=_in_thread(refresh),
+                on_login=_in_thread(login_via_browser),
+                on_session_key=_in_thread(prompt_session_key),
+                on_quit=lambda: icon.stop(),
+                on_hide=lambda: set_widget(False),  # "Ẩn widget" ở panel / menu chuột phải
+                on_move=lambda xy: core.update_config(widget_pos=list(xy)),
+                on_anchor=lambda a: set_anchor(a, from_widget=True),  # chọn trong menu của widget
+                anchor=state["anchor"],
+                position=core.get_setting("widget_pos"))
+        return state["widget"]
+
+    def set_anchor(anchor, from_widget=False):
+        """Đổi điểm neo, lưu vào config.json; widget đã tự áp dụng nếu thay đổi đến từ chính nó."""
+        state["anchor"] = anchor
+        core.update_config(widget_anchor=anchor)
+        if not from_widget and state["widget"] is not None:
+            state["widget"].set_anchor(anchor)
+        refresh(skip_fetch=True)  # dựng lại menu để dấu chọn đúng
+
+    def set_widget(on):
+        state["widget_on"] = on
+        core.update_config(widget=on)
+        w = get_widget()
+        if on:
+            w.set_info(_widget_info())
+            w.show()
+        else:
+            w.hide()
+        refresh(skip_fetch=True)  # dựng lại menu để dấu tick đúng
+
     def toggle_reset(_=None, __=None):
         state["abs"] = not state["abs"]
         refresh(skip_fetch=True)
 
+    def prompt_session_key():
+        """Hộp thoại dán sessionKey -> lưu vào config.json -> làm mới ngay."""
+        try:
+            import tkinter as tk
+            from tkinter import messagebox, simpledialog
+        except Exception:
+            state["note"] = "Thiếu tkinter — dán sessionKey vào config.json (xem README)"
+            refresh(skip_fetch=True)
+            return
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            val = simpledialog.askstring(
+                "Claude Usage Bar",
+                "Dán giá trị cookie sessionKey của claude.ai\n"
+                "(trình duyệt: F12 → Application → Cookies → claude.ai → sessionKey)",
+                show="*", parent=root)
+            if not val:
+                return
+            try:
+                path = core.save_session_key(val)
+            except Exception as e:
+                messagebox.showerror("Claude Usage Bar", f"Không lưu được: {e}", parent=root)
+                return
+        finally:
+            root.destroy()
+        state["note"] = f"Đã lưu sessionKey ({path})"
+        refresh()
+
+    def login_via_browser():
+        """Mở cửa sổ Chrome/Edge tạm để đăng nhập claude.ai (tiến trình riêng), rồi làm mới."""
+        import os
+        import subprocess
+        if state["logging_in"]:
+            return
+        state["logging_in"] = True
+        state["note"] = "Đang chờ bạn đăng nhập claude.ai trong cửa sổ vừa mở…"
+        refresh(skip_fetch=True)
+        try:
+            script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "claude_usage_login.py")
+            flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            rc = subprocess.call([sys.executable, script], creationflags=flags)
+        except Exception as e:
+            rc = -1
+            state["note"] = f"Lỗi mở cửa sổ đăng nhập: {e}"[:110]
+        finally:
+            state["logging_in"] = False
+        if rc == 0:
+            refresh()  # lấy số liệu ngay với phiên vừa đăng nhập
+        else:
+            if rc == 2:
+                state["note"] = "Không thấy Chrome/Edge/Brave — dùng 'Nhập sessionKey…'"
+            elif rc != -1:
+                state["note"] = "Chưa đăng nhập (đã đóng cửa sổ hoặc hết giờ)"
+            refresh(skip_fetch=True)
+
     def refresh(_=None, __=None, skip_fetch=False):
+        if state["logging_in"] and not skip_fetch:
+            return  # đang đăng nhập: đừng ghi đè trạng thái bằng lỗi cookie
         if not skip_fetch:
             u = core.fetch_usage()
             if u["ok"]:
@@ -248,16 +378,34 @@ def run_tray():
             else:
                 # giữ số cũ, chỉ ghi chú lỗi
                 state["note"] = (f"⚠ lỗi lúc {_now()} — giữ số cũ"
-                                 if state["good"] else u["error"])
+                                 if state["good"] else "Lỗi: " + u["error"])
         pct = state["good"]["five"] if state["good"] else None
         icon.icon = _make_image(pct)
         icon.title = title_text()
+        if state["widget_on"]:
+            w = get_widget()
+            w.set_info(_widget_info())
+            w.show()
         icon.menu = pystray.Menu(
             # Bấm 2 dòng này để đổi kiểu giờ reset ("còn ..." ↔ "lúc HH:MM")
             pystray.MenuItem(menu_line, toggle_reset),
             pystray.MenuItem(menu_week, toggle_reset),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Làm mới ngay", lambda i, it: refresh()),
+            pystray.MenuItem("Hiện số ở góc taskbar",
+                             lambda i, it: set_widget(not state["widget_on"]),
+                             checked=lambda it: state["widget_on"]),
+            pystray.MenuItem("Điểm neo widget", pystray.Menu(*[
+                pystray.MenuItem(label, (lambda k: lambda i, it: set_anchor(k))(key),
+                                 checked=(lambda k: lambda it: state["anchor"] == k)(key),
+                                 radio=True)
+                for key, label in ANCHORS])),
+            pystray.MenuItem("Đăng nhập claude.ai…",
+                             lambda i, it: threading.Thread(target=login_via_browser,
+                                                            daemon=True).start()),
+            pystray.MenuItem("Nhập sessionKey…",
+                             lambda i, it: threading.Thread(target=prompt_session_key,
+                                                            daemon=True).start()),
             pystray.MenuItem("Thoát", lambda i, it: i.stop()),
         )
 
@@ -270,13 +418,53 @@ def run_tray():
                 pass
             time.sleep(POLL_SECONDS)
 
+    if state["widget_on"]:  # hiện ngay (--%), không đợi lượt tải số liệu đầu tiên
+        w = get_widget()
+        w.set_info(_widget_info())
+        w.show()
+
     threading.Thread(target=loop, daemon=True).start()
     icon.run()
 
 
 # ============================================================================ ==
 
+_MUTEX_HANDLES = []  # giữ handle mutex sống suốt vòng đời tiến trình
+
+
+def _already_running_windows():
+    """True nếu đã có một bản app khác đang chạy (tránh 2 icon tray khi bấm run.bat nhiều lần)."""
+    import ctypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    handle = k32.CreateMutexW(None, False, "Local\\ClaudeUsageBar")
+    _MUTEX_HANDLES.append(handle)
+    return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
+
+
+def _ensure_log_streams():
+    """pythonw không có console: sys.stdout/stderr là None nên mọi lỗi runtime bị nuốt mất.
+    Chuyển chúng vào file log để còn debug được."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    import os
+    import tempfile
+    try:
+        log = open(os.path.join(tempfile.gettempdir(), "claude-usage-bar.log"), "a",
+                   encoding="utf-8", buffering=1)
+    except OSError:
+        return
+    if sys.stdout is None:
+        sys.stdout = log
+    if sys.stderr is None:
+        sys.stderr = log
+
+
 def main():
+    _ensure_log_streams()
+    if sys.platform == "win32" and _already_running_windows():
+        print("Claude Usage Bar đang chạy rồi — bỏ qua bản thứ hai.")
+        return
     if sys.platform == "darwin":
         run_macos()
     else:
