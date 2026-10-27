@@ -7,3 +7,6 @@ rumps>=0.4.0; sys_platform == "darwin"
 # Linux / Windows: system tray
 pystray>=0.19.5; sys_platform != "darwin"
 Pillow>=9.1.0; sys_platform != "darwin"
+
+# Cửa sổ đăng nhập trong app (nói chuyện với Chrome/Edge qua cổng debug cục bộ)
+websocket-client>=1.6.0; sys_platform != "darwin"

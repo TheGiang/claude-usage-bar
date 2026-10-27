@@ -1,5 +1,6 @@
-# Python
+# Python (.venv = macOS/Linux, .venv-win = Windows)
 .venv/
+.venv-win/
 venv/
 __pycache__/
 *.pyc
