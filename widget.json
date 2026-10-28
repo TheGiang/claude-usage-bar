@@ -1,0 +1,46 @@
+{
+  "id": "claude",
+  "name": "Claude Usage Bar",
+  "version": "1.0.0",
+  "description": "Widget hiển thị hạn mức sử dụng token Claude session và tuần theo thời gian thực",
+  "author": "MediaWorkspace",
+  "category": "AI Tools",
+  "entry": "claude_usage_app.py",
+  "widget_script": "claude_usage_widget.py",
+  "requirements": "requirements.txt",
+  "config_dir": "~/.config/claude-usage",
+  "config_file": "config.json",
+  "dimensions": {
+    "width": 258,
+    "height": 44
+  },
+  "layout": {
+    "default_anchor": "bottom-left",
+    "default_order": 1
+  },
+  "settings_schema": [
+    {
+      "key": "poll_seconds",
+      "label": "Tần số kiểm tra token (giây)",
+      "type": "select",
+      "options": [15, 30, 45, 60, 120, 300],
+      "default": 30
+    },
+    {
+      "key": "warn_at",
+      "label": "Cảnh báo vàng (% token)",
+      "type": "slider",
+      "min": 50,
+      "max": 90,
+      "default": 75
+    },
+    {
+      "key": "danger_at",
+      "label": "Cảnh báo đỏ (% token)",
+      "type": "slider",
+      "min": 75,
+      "max": 99,
+      "default": 90
+    }
+  ]
+}

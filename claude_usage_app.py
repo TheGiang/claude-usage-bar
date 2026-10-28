@@ -164,9 +164,17 @@ def run_macos():
 # ================================================= Linux / Windows (pystray) ====
 
 # Màu số trên icon tray: xanh khi bình thường, đỏ khi session >= RED_AT, xám khi chưa có số
-_COLOR_OK = (30, 200, 90)
-_COLOR_WARN = (255, 59, 48)
-_COLOR_UNKNOWN = (150, 150, 150)
+_COLOR_OK = (48, 209, 88)
+_COLOR_WARN = (255, 69, 58)
+_COLOR_UNKNOWN = (160, 174, 192)
+
+
+def _is_light_theme():
+    try:
+        from claude_usage_widget import _taskbar_light
+        return _taskbar_light()
+    except Exception:
+        return False
 
 
 def _load_bold_font(size):
@@ -181,24 +189,25 @@ def _load_bold_font(size):
     return ImageFont.load_default()
 
 
-def _make_image(pct):
+def _make_image(pct, light=None):
     """
-    Vẽ icon tray: chỉ có số %, không nền; xanh bình thường, đỏ khi >= RED_AT.
-
-    Mỗi chữ số có kích thước CỐ ĐỊNH, không phụ thuộc giá trị ("5" và từng chữ số của
-    "99" to bằng nhau): hệ số phóng được đo từ bộ chữ số 0-9, không phải từ chuỗi đang vẽ.
-    Tối đa 2 chữ số vừa khít canvas; riêng "100" phải ép hẹp lại để đủ 3 chữ số.
+    Vẽ icon tray: số %, tự động thích ứng với theme hệ thống (Sáng/Tối) để không bị mờ nét.
     """
     from PIL import Image, ImageDraw
+
+    if light is None:
+        light = _is_light_theme()
 
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     if pct is None:
-        color = _COLOR_UNKNOWN
+        color = (100, 116, 139) if light else (160, 174, 192)
     elif pct >= RED_AT:
-        color = _COLOR_WARN
+        color = (220, 38, 38) if light else (255, 69, 58)
+    elif pct >= 75:
+        color = (217, 119, 6) if light else (245, 184, 46)
     else:
-        color = _COLOR_OK
+        color = (22, 163, 74) if light else (48, 209, 88)
 
     text = "?" if pct is None else f"{int(round(pct))}"
     n = len(text)
@@ -382,7 +391,7 @@ def run_tray():
                 state["note"] = (f"⚠ lỗi lúc {_now()} — giữ số cũ"
                                  if state["good"] else "Lỗi: " + u["error"])
         pct = state["good"]["five"] if state["good"] else None
-        icon.icon = _make_image(pct)
+        icon.icon = _make_image(pct, light=_is_light_theme())
         icon.title = title_text()
         if state["widget_on"]:
             w = get_widget()
@@ -416,12 +425,20 @@ def run_tray():
 
     def loop():
         import time
+        last_theme = _is_light_theme()
         while True:
             try:
+                # Kiểm tra theme thay đổi mỗi giây để đổi màu icon khay hệ thống tức thì
+                for _ in range(POLL_SECONDS):
+                    time.sleep(1)
+                    cur_theme = _is_light_theme()
+                    if cur_theme != last_theme:
+                        last_theme = cur_theme
+                        pct = state["good"]["five"] if state["good"] else None
+                        icon.icon = _make_image(pct, light=cur_theme)
                 refresh()
             except Exception:
-                pass
-            time.sleep(POLL_SECONDS)
+                time.sleep(POLL_SECONDS)
 
     if state["widget_on"]:  # hiện ngay (--%), không đợi lượt tải số liệu đầu tiên
         w = get_widget()

@@ -40,18 +40,71 @@ WARN_AT = 75
 DANGER_AT = 90
 
 # ------------------------------------------------------------------------------- màu sắc ----
-SPARK = (96, 165, 250)
-SPARK_PANEL = (88, 196, 230)
-CAL_OK = (32, 214, 166)
-YELLOW = (245, 184, 46)
-RED = (255, 90, 106)
-BAR_SESSION = ((56, 189, 248), (59, 130, 246))   # gradient xanh dương
-BAR_WEEK = ((52, 224, 170), (16, 185, 129))      # gradient xanh lá
-PANEL_FILL = (20, 44, 56)
-PANEL_ALPHA = 246
-PANEL_BORDER = (150, 200, 215)
+# Bảng màu tối (Dark Theme)
+DARK_THEME = {
+    "ink": (255, 255, 255),
+    "label": (203, 213, 225),
+    "track": (255, 255, 255),
+    "track_a": 42,
+    "divider": (255, 255, 255),
+    "divider_a": 46,
+    "chevron": (203, 213, 225),
+    "spark": (96, 165, 250),
+    "spark_panel": (88, 196, 230),
+    "cal_ok": (52, 211, 153),
+    "cal_danger": (248, 113, 113),
+    "yellow": (245, 184, 46),
+    "red": (255, 90, 106),
+    "bar_session": ((56, 189, 248), (59, 130, 246)),
+    "bar_week": ((52, 224, 170), (16, 185, 129)),
+    "panel_fill": (20, 44, 56),
+    "panel_alpha": 246,
+    "panel_border": (150, 200, 215),
+    "panel_border_a": 62,
+    "panel_shadow_fill": 120,
+    "panel_muted": (165, 186, 196),
+    "hover_fill": (255, 255, 255, 24),
+}
+
+# Bảng màu sáng (Light Theme) - tinh chỉnh độ tương phản cao chống mờ trên nền sáng
+LIGHT_THEME = {
+    "ink": (15, 23, 42),            # Slate-900: chữ số đậm, tương phản cao
+    "label": (51, 65, 85),          # Slate-700: nhãn rõ nét
+    "track": (203, 213, 225),       # Slate-300: rãnh thanh tiến trình sắc nét
+    "track_a": 160,
+    "divider": (148, 163, 184),     # Slate-400
+    "divider_a": 100,
+    "chevron": (71, 85, 105),       # Slate-600
+    "spark": (29, 78, 216),         # Blue-700: tương phản cao trên nền sáng
+    "spark_panel": (37, 99, 235),   # Blue-600
+    "cal_ok": (5, 150, 105),        # Emerald-600
+    "cal_danger": (220, 38, 38),    # Red-600
+    "yellow": (217, 119, 6),        # Amber-600
+    "red": (220, 38, 38),           # Red-600
+    "bar_session": ((2, 132, 199), (37, 99, 235)),  # Sky-600 đến Blue-600
+    "bar_week": ((16, 185, 129), (5, 150, 105)),    # Emerald-500 đến Emerald-600
+    "panel_fill": (248, 250, 252),  # Kính sáng Slate-50
+    "panel_alpha": 250,
+    "panel_border": (203, 213, 225),# Slate-300
+    "panel_border_a": 180,
+    "panel_shadow_fill": 80,
+    "panel_muted": (100, 116, 139), # Slate-500
+    "hover_fill": (0, 0, 0, 18),    # Hover xám nhẹ
+}
+
+# Tương thích ngược với các biến hằng số cũ
+SPARK = DARK_THEME["spark"]
+SPARK_PANEL = DARK_THEME["spark_panel"]
+CAL_OK = DARK_THEME["cal_ok"]
+YELLOW = DARK_THEME["yellow"]
+RED = DARK_THEME["red"]
+BAR_SESSION = DARK_THEME["bar_session"]
+BAR_WEEK = DARK_THEME["bar_week"]
+PANEL_FILL = DARK_THEME["panel_fill"]
+PANEL_ALPHA = DARK_THEME["panel_alpha"]
+PANEL_BORDER = DARK_THEME["panel_border"]
 WHITE = (255, 255, 255)
-PANEL_MUTED = (165, 186, 196)
+PANEL_MUTED = DARK_THEME["panel_muted"]
 
 
 def _dbg(*a):
@@ -71,8 +124,9 @@ def _level(p):
     return "ok"
 
 
-def _bar_colors(level, grad):
-    return {"warn": (YELLOW, YELLOW), "danger": (RED, RED)}.get(level, grad)
+def _bar_colors(level, grad, theme=None):
+    th = theme or DARK_THEME
+    return {"warn": (th["yellow"], th["yellow"]), "danger": (th["red"], th["red"])}.get(level, grad)
 
 
 def _pct_text(p):
@@ -262,34 +316,33 @@ class _Painter:
 
 # --------------------------------------------------------------------------- widget gọn ----
 def render_compact(five, seven, scale=1.0, light=False):
-    """Widget gọn trên taskbar: nền trong suốt (alpha=1 để vẫn bấm được), chữ theo nền taskbar."""
+    """Widget gọn trên taskbar: nền trong suốt (alpha=1 để vẫn bấm được), màu sắc tự thích ứng theo theme."""
+    th = LIGHT_THEME if light else DARK_THEME
     p = _Painter(CW, CH, scale, SS_COMPACT)
-    if light:
-        ink, label, track, track_a, divider = (20, 24, 32), (70, 80, 96), (0, 0, 0), 38, (0, 0, 0)
-    else:
-        ink, label, track, track_a, divider = WHITE, (200, 207, 218), WHITE, 42, WHITE
-    f_label, f_pct = _font(11 * p.u), _font(17.5 * p.u, "semibold")
+    # font semibold để nét chữ nhỏ không bị quá mảnh hay mờ trên nền taskbar trong suốt
+    f_label = _font(11.5 * p.u, "semibold")
+    f_pct = _font(17.5 * p.u, "semibold")
     lv5, lv7 = _level(five), _level(seven)
 
-    p.sparkle(20, 23, 11, SPARK)
-    p.sparkle(30.5, 11.5, 4.2, SPARK)
-    p.calendar(126, 13, 19, RED if lv7 == "danger" else CAL_OK)
+    p.sparkle(20, 23, 11, th["spark"])
+    p.sparkle(30.5, 11.5, 4.2, th["spark"])
+    p.calendar(126, 13, 19, th["cal_danger"] if lv7 == "danger" else th["cal_ok"])
 
     def column(x0, name, val, level, grad):
         dim = val is None
-        p.text(x0, 14.5, name, f_label, label, alpha=170 if dim else 255)
-        p.text(x0, 31, _pct_text(val), f_pct, ink, alpha=130 if dim else 255)
-        p.rrect(x0, 35.5, x0 + 62, 39.5, 2, track, alpha=track_a)
+        p.text(x0, 14.5, name, f_label, th["label"], alpha=190 if dim else 255)
+        p.text(x0, 31, _pct_text(val), f_pct, th["ink"], alpha=150 if dim else 255)
+        p.rrect(x0, 35.5, x0 + 62, 39.5, 2, th["track"], alpha=th["track_a"])
         if not dim:
             fw = max(4.0, 62 * min(1.0, val / 100.0))
-            c1, c2 = _bar_colors(level, grad)
+            c1, c2 = _bar_colors(level, grad, th)
             p.rrect(x0, 35.5, x0 + fw, 39.5, 2, c1, gradient=(c1, c2))
 
-    column(44, "Session", five, lv5, BAR_SESSION)
-    column(154, "Week", seven, lv7, BAR_WEEK)
+    column(44, "Session", five, lv5, th["bar_session"])
+    column(154, "Week", seven, lv7, th["bar_week"])
 
-    p.line([(116, 9), (116, 35)], divider, 1, alpha=46)
-    p.chevron(242, 23, label, "down", 4.5, 1.5)
+    p.line([(116, 9), (116, 35)], th["divider"], 1, alpha=th["divider_a"])
+    p.chevron(242, 23, th["chevron"], "down", 4.5, 1.5)
 
     img = p.finish()
     img.putalpha(img.getchannel("A").point(lambda v: v if v else 1))  # alpha=1: bấm được, vẫn vô hình
@@ -297,70 +350,72 @@ def render_compact(five, seven, scale=1.0, light=False):
 
 
 # ------------------------------------------------------------------------------- panel mở ----
-def render_flyout(info, scale=1.0, show_abs=False):
+def render_flyout(info, scale=1.0, show_abs=False, light=False):
     """
     Panel mở rộng. Trả về (ảnh RGBA, rects) với rects = {tên: (x0, y0, x1, y1)} theo px thật.
+    Tự động vẽ theo giao diện sáng/tối đồng bộ với hệ thống.
     """
-    from PIL import Image, ImageFilter
+    from PIL import Image, ImageFilter, ImageDraw
 
+    th = LIGHT_THEME if light else DARK_THEME
     five, seven = info.get("five"), info.get("seven")
     p = _Painter(FW, FH, scale, SS_FLYOUT, margin=FM)
     u = p.u
 
     # bóng đổ mềm phía sau panel
     sh = Image.new("L", (p.W, p.H), 0)
-    from PIL import ImageDraw
     ImageDraw.Draw(sh).rounded_rectangle(
-        [FM * u, (FM + 4) * u, (FM + FW) * u, (FM + FH + 4) * u], radius=12 * u, fill=120)
+        [FM * u, (FM + 4) * u, (FM + FW) * u, (FM + FH + 4) * u],
+        radius=12 * u, fill=th["panel_shadow_fill"])
     sh = sh.filter(ImageFilter.GaussianBlur(7 * u))
     shadow = Image.new("RGBA", (p.W, p.H), (0, 0, 0, 255))
     shadow.putalpha(sh)
     p.img = Image.alpha_composite(p.img, shadow)
 
-    # thân panel: kính tối ngả xanh
-    p.rrect(0, 0, FW, FH, 12, PANEL_FILL, alpha=PANEL_ALPHA)
-    p.ring(0.5, 0.5, FW - 0.5, FH - 0.5, 12, PANEL_BORDER, 1, alpha=62)
+    # thân panel: kính tối hoặc kính sáng tuỳ theme
+    p.rrect(0, 0, FW, FH, 12, th["panel_fill"], alpha=th["panel_alpha"])
+    p.ring(0.5, 0.5, FW - 0.5, FH - 0.5, 12, th["panel_border"], 1, alpha=th["panel_border_a"])
 
     f_title, f_sub = _font(15 * u, "semibold"), _font(12 * u)
-    f_blk, f_big, f_unit = _font(14.5 * u), _font(27 * u, "semibold"), _font(15 * u)
-    f_rst, f_row = _font(12.5 * u), _font(14.5 * u)
+    f_blk, f_big, f_unit = _font(14.5 * u, "semibold"), _font(27 * u, "semibold"), _font(15 * u)
+    f_rst, f_row = _font(12.5 * u), _font(14.5 * u, "semibold")
     pad = 16
-    sep = lambda y: p.line([(0, y), (FW, y)], WHITE, 1, alpha=26)
+    sep = lambda y: p.line([(0, y), (FW, y)], th["divider"], 1, alpha=th["divider_a"])
 
     # ---- đầu đề: bấm để mở trang usage ----
-    p.sparkle(30, 32, 11, SPARK_PANEL)
-    p.sparkle(40, 21, 4.2, SPARK_PANEL)
-    p.text(56, 29, "Chi tiết sử dụng token", f_title, WHITE)
-    p.text(56, 48, "Xem đầy đủ thông tin", f_sub, PANEL_MUTED)
-    p.chevron(FW - 24, 33, PANEL_MUTED, "right", 5, 1.5)
+    p.sparkle(30, 32, 11, th["spark_panel"])
+    p.sparkle(40, 21, 4.2, th["spark_panel"])
+    p.text(56, 29, "Chi tiết sử dụng token", f_title, th["ink"])
+    p.text(56, 48, "Xem đầy đủ thông tin", f_sub, th["panel_muted"])
+    p.chevron(FW - 24, 33, th["panel_muted"], "right", 5, 1.5)
     sep(65)
 
     def block(top, title, val, rel, absolute, grad):
         lv = _level(val)
-        p.text(pad, top + 26, title, f_blk, WHITE)
+        p.text(pad, top + 26, title, f_blk, th["ink"])
         big = _pct_text(val)
-        p.text(pad, top + 58, big, f_big, WHITE, alpha=140 if val is None else 255)
-        p.text(pad + p.text_width(big, f_big) + 6, top + 58, "đã sử dụng", f_unit, WHITE)
+        p.text(pad, top + 58, big, f_big, th["ink"], alpha=140 if val is None else 255)
+        p.text(pad + p.text_width(big, f_big) + 6, top + 58, "đã sử dụng", f_unit, th["label"])
         w = FW - 2 * pad
-        p.rrect(pad, top + 69, pad + w, top + 74, 2.5, WHITE, alpha=36)
+        p.rrect(pad, top + 69, pad + w, top + 74, 2.5, th["track"], alpha=th["track_a"])
         if val is not None:
-            c1, c2 = _bar_colors(lv, grad)
+            c1, c2 = _bar_colors(lv, grad, th)
             p.rrect(pad, top + 69, pad + max(5.0, w * min(1.0, val / 100.0)), top + 74, 2.5,
                     c1, gradient=(c1, c2))
         text = ((("Đặt lại " + absolute) if show_abs and absolute else rel)
                 or ("Chưa có dữ liệu · Cài đặt › Đăng nhập" if val is None else "—"))
-        p.text(pad, top + 96, text, f_rst, PANEL_MUTED)
+        p.text(pad, top + 96, text, f_rst, th["panel_muted"])
 
-    block(66, "Phiên hiện tại", five, info.get("five_long"), info.get("five_abs"), BAR_SESSION)
+    block(66, "Phiên hiện tại", five, info.get("five_long"), info.get("five_abs"), th["bar_session"])
     sep(174)
-    block(175, "Giới hạn tuần", seven, info.get("seven_long"), info.get("seven_abs"), BAR_WEEK)
+    block(175, "Giới hạn tuần", seven, info.get("seven_long"), info.get("seven_abs"), th["bar_week"])
     sep(283)
 
     # ---- hàng hành động ----
-    p.refresh_icon(pad + 11, 303, 7.5, WHITE)
-    p.text(56, 308, "Làm mới ngay", f_row, WHITE)
-    p.gear(pad + 11, 343, 8.5, WHITE)
-    p.text(56, 348, "Cài đặt", f_row, WHITE)
+    p.refresh_icon(pad + 11, 303, 7.5, th["ink"])
+    p.text(56, 308, "Làm mới ngay", f_row, th["ink"])
+    p.gear(pad + 11, 343, 8.5, th["ink"])
+    p.text(56, 348, "Cài đặt", f_row, th["ink"])
 
     img = p.finish()
 
@@ -378,7 +433,7 @@ def render_flyout(info, scale=1.0, show_abs=False):
     return img, rects
 
 
-def apply_hover(img, rects, hover, scale=1.0):
+def apply_hover(img, rects, hover, scale=1.0, light=False):
     """Tô sáng hàng đang rê chuột lên một bản sao ảnh nền (rẻ hơn nhiều so với vẽ lại cả panel)."""
     from PIL import Image, ImageDraw
     if hover not in ("header", "refresh", "settings"):
@@ -386,8 +441,9 @@ def apply_hover(img, rects, hover, scale=1.0):
     x0, y0, x1, y1 = rects[hover]
     inset = round(6 * scale)
     hl = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    fill = (0, 0, 0, 18) if light else (255, 255, 255, 24)
     ImageDraw.Draw(hl).rounded_rectangle([x0 + inset, y0 + round(2 * scale), x1 - inset, y1 - round(2 * scale)],
-                                         radius=round(7 * scale), fill=(255, 255, 255, 20))
+                                         radius=round(7 * scale), fill=fill)
     return Image.alpha_composite(img, hl)
 
 
@@ -521,12 +577,53 @@ def _dpi_scale():
 
 
 def _taskbar_light():
-    """Taskbar đang ở giao diện sáng? (để chọn chữ tối thay vì chữ trắng)"""
+    """Taskbar đang ở giao diện sáng? (để chọn bảng màu tương phản cao, chống mờ nét)"""
+    if sys.platform != "win32":
+        return False
     try:
         import winreg
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                              r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-        return winreg.QueryValueEx(key, "SystemUsesLightTheme")[0] == 1
+        sys_light = False
+        try:
+            sys_light = winreg.QueryValueEx(key, "SystemUsesLightTheme")[0] == 1
+        except Exception:
+            try:
+                sys_light = winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 1
+            except Exception:
+                pass
+
+        color_prev = False
+        try:
+            color_prev = winreg.QueryValueEx(key, "ColorPrevalence")[0] == 1
+        except Exception:
+            pass
+        winreg.CloseKey(key)
+
+        # Nếu taskbar bật "Show accent color on Start and taskbar", kiểm tra độ sáng màu chủ đạo
+        if color_prev:
+            try:
+                dwm_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM")
+                accent = None
+                for n in ("AccentColor", "ColorizationColor"):
+                    try:
+                        accent = winreg.QueryValueEx(dwm_key, n)[0]
+                        if accent:
+                            break
+                    except Exception:
+                        pass
+                winreg.CloseKey(dwm_key)
+
+                if accent is not None:
+                    r = accent & 0xFF
+                    g = (accent >> 8) & 0xFF
+                    b = (accent >> 16) & 0xFF
+                    lum = 0.299 * r + 0.587 * g + 0.114 * b
+                    return lum > 140  # Nền sáng -> trả về True
+            except Exception:
+                pass
+
+        return sys_light
     except Exception:
         return False
 
@@ -753,18 +850,23 @@ class Widget:
         hwnd = _Win.hwnd(root)
         _Win.make_layered(hwnd, noactivate=False)
 
-        compact = {"img": None}
+        current_theme = {"light": _taskbar_light()}
+        compact = {"img": None, "light": None}
 
         def draw_compact(rerender=True):
             """rerender=False: chỉ đẩy lại ảnh đã vẽ (rẻ) -- dùng để 'vỗ về' DWM sau khi hiện cửa sổ."""
+            is_light = current_theme["light"]
+            if compact.get("light") != is_light:
+                rerender = True
             if rerender or compact["img"] is None:
                 compact["img"] = render_compact(self._info.get("five"), self._info.get("seven"),
-                                                scale, light=_taskbar_light())
+                                                scale, light=is_light)
+                compact["light"] = is_light
             ok = _Win.update(hwnd, compact["img"])
             _dbg("vẽ widget gọn:", "OK" if ok else f"THẤT BẠI (lỗi Win32 {ctypes.get_last_error()})")
 
         # ================= panel mở rộng =================
-        fly = {"win": None, "hwnd": None, "rects": {}, "hover": None, "rect": None, "base": None}
+        fly = {"win": None, "hwnd": None, "rects": {}, "hover": None, "rect": None, "base": None, "light": None}
         # Menu Win32 chạy vòng lặp riêng nhưng bộ đếm giờ của Tk vẫn kích hoạt bên trong nó.
         # Cú bấm vào mục menu nằm ngoài panel -> poll_outside sẽ đóng panel và HUỶ menu trước khi
         # lệnh kịp chạy. Cờ này làm poll_outside đứng yên trong lúc có menu mở.
@@ -781,9 +883,11 @@ class Widget:
 
         def fly_render(rebuild=True):
             """Ảnh panel hiện tại. rebuild=False: dùng lại ảnh nền đã vẽ, chỉ đổi lớp tô sáng hover."""
-            if rebuild or fly["base"] is None:
-                fly["base"], fly["rects"] = render_flyout(self._info, scale, self._show_abs)
-            return apply_hover(fly["base"], fly["rects"], fly["hover"], scale)
+            is_light = current_theme["light"]
+            if rebuild or fly["base"] is None or fly.get("light") != is_light:
+                fly["base"], fly["rects"] = render_flyout(self._info, scale, self._show_abs, light=is_light)
+                fly["light"] = is_light
+            return apply_hover(fly["base"], fly["rects"], fly["hover"], scale, light=is_light)
 
         def open_flyout():
             if fly["win"] is not None:
@@ -1016,6 +1120,17 @@ class Widget:
 
         def tick():
             redraw = False
+            # Tự động phát hiện khi Windows đổi giao diện Sáng / Tối trong thời gian thực
+            is_light = _taskbar_light()
+            if is_light != current_theme["light"]:
+                _dbg("Theme hệ thống thay đổi -> chuyển sang:", "Sáng" if is_light else "Tối")
+                current_theme["light"] = is_light
+                compact["img"] = None
+                if fly["win"] is not None:
+                    fly["base"] = None
+                    fly_refresh_image()
+                redraw = True
+
             try:
                 while True:
                     cmd, arg = self._q.get_nowait()
