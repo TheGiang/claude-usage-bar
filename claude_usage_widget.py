@@ -650,8 +650,8 @@ def _anchor_position(anchor, sw, sh, w, h, scale):
 # ----------------------------------------------------------------------------------- widget ----
 class Widget:
     def __init__(self, on_refresh=None, on_login=None, on_session_key=None, on_quit=None,
-                 on_hide=None, on_move=None, on_anchor=None, position=None,
-                 anchor="bottom-left"):
+                 on_hide=None, on_move=None, on_anchor=None, on_autostart_toggle=None,
+                 autostart_status=None, position=None, anchor="bottom-left"):
         """
         Callback (chạy trong thread của widget; app nên tự đưa việc nặng sang thread khác):
         on_refresh / on_login / on_session_key / on_quit / on_hide / on_move((x, y)) /
@@ -660,7 +660,8 @@ class Widget:
         position: (x, y) đã lưu (px thật) cho chế độ "free"; None để dùng vị trí mặc định
         """
         self._cb = dict(refresh=on_refresh, login=on_login, session_key=on_session_key,
-                        quit=on_quit, hide=on_hide, move=on_move, anchor=on_anchor)
+                        quit=on_quit, hide=on_hide, move=on_move, anchor=on_anchor,
+                        autostart_toggle=on_autostart_toggle, autostart_status=autostart_status)
         self._anchor = anchor if anchor in ANCHOR_KEYS else "bottom-left"
         self._position = tuple(position) if position else None
         self._q = queue.Queue()
@@ -899,6 +900,12 @@ class Widget:
             m.add_command(label="Nhập sessionKey…", command=later("session_key"))
             m.add_separator()
             add_anchor_menu(m)
+            if self._cb.get("autostart_status") and self._cb.get("autostart_toggle"):
+                lbl = "Khởi động cùng Windows" if sys.platform == "win32" else "Khởi động cùng hệ thống"
+                auto_var = tk.BooleanVar(master=root, value=bool(self._cb["autostart_status"]()))
+                m._auto_var = auto_var
+                m.add_checkbutton(label=lbl, variable=auto_var,
+                                  command=lambda: (close_flyout(), self._call("autostart_toggle")))
             m.add_command(label="Ẩn widget", command=lambda: (close_flyout(), hide_cmd()))
             m.add_command(label="Thoát", command=later("quit"))
             show_menu(m, x_root, y_root)
@@ -989,6 +996,12 @@ class Widget:
             if self._cb.get("refresh"):
                 m.add_command(label="Làm mới ngay", command=lambda: self._call("refresh"))
             add_anchor_menu(m)
+            if self._cb.get("autostart_status") and self._cb.get("autostart_toggle"):
+                lbl = "Khởi động cùng Windows" if sys.platform == "win32" else "Khởi động cùng hệ thống"
+                auto_var = tk.BooleanVar(master=root, value=bool(self._cb["autostart_status"]()))
+                m._auto_var = auto_var
+                m.add_checkbutton(label=lbl, variable=auto_var,
+                                  command=lambda: self._call("autostart_toggle"))
             m.add_command(label="Ẩn widget", command=hide_cmd)
             show_menu(m, e.x_root, e.y_root)
 

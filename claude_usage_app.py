@@ -279,6 +279,8 @@ def run_tray():
                 on_refresh=_in_thread(refresh),
                 on_login=_in_thread(login_via_browser),
                 on_session_key=_in_thread(prompt_session_key),
+                on_autostart_toggle=lambda: (core.toggle_startup(), refresh(skip_fetch=True)),
+                autostart_status=core.get_startup_status,
                 on_quit=lambda: icon.stop(),
                 on_hide=lambda: set_widget(False),  # "Ẩn widget" ở panel / menu chuột phải
                 on_move=lambda xy: core.update_config(widget_pos=list(xy)),
@@ -400,6 +402,9 @@ def run_tray():
                                  checked=(lambda k: lambda it: state["anchor"] == k)(key),
                                  radio=True)
                 for key, label in ANCHORS])),
+            pystray.MenuItem("Khởi động cùng Windows" if sys.platform == "win32" else "Khởi động cùng hệ thống",
+                             lambda i, it: (core.toggle_startup(), refresh(skip_fetch=True)),
+                             checked=lambda it: core.get_startup_status()),
             pystray.MenuItem("Đăng nhập claude.ai…",
                              lambda i, it: threading.Thread(target=login_via_browser,
                                                             daemon=True).start()),

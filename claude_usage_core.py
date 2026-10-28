@@ -323,6 +323,73 @@ def fetch_usage(retries=4, backoff=1.2):
     return {"ok": False, "error": last}
 
 
+# ----------------------------------------------------------- startup/autostart ----
+
+def get_startup_status():
+    """Kiểm tra xem ứng dụng đã bật tự khởi động cùng máy tính chưa."""
+    import sys
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        if not appdata:
+            return False
+        lnk = os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Claude Usage Bar.lnk")
+        return os.path.isfile(lnk)
+    elif sys.platform == "darwin":
+        plist = os.path.expanduser("~/Library/LaunchAgents/io.github.claude-usage-bar.plist")
+        return os.path.isfile(plist)
+    elif sys.platform.startswith("linux"):
+        desktop = os.path.expanduser("~/.config/autostart/io.github.claude-usage-bar.desktop")
+        return os.path.isfile(desktop)
+    return False
+
+
+def set_startup(enable=True):
+    """Bật hoặc tắt tự khởi động cùng hệ thống. Trả về bool trạng thái sau khi cập nhật."""
+    import subprocess
+    import sys
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        if not appdata:
+            return False
+        lnk = os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Claude Usage Bar.lnk")
+        if enable:
+            run_bat = os.path.join(root_dir, "run.bat")
+            if not os.path.isfile(run_bat):
+                return False
+            ps_cmd = (
+                f"$ws = New-Object -ComObject WScript.Shell; "
+                f"$s = $ws.CreateShortcut('{lnk}'); "
+                f"$s.TargetPath = '{run_bat}'; "
+                f"$s.WorkingDirectory = '{root_dir}'; "
+                f"$s.WindowStyle = 7; "
+                f"$s.Description = 'Claude Usage Bar Startup'; "
+                f"$s.Save()"
+            )
+            subprocess.call(["powershell", "-NoProfile", "-Command", ps_cmd],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            if os.path.isfile(lnk):
+                try:
+                    os.remove(lnk)
+                except OSError:
+                    pass
+        return get_startup_status()
+    else:
+        script = "install-startup.sh" if enable else "uninstall-startup.sh"
+        script_path = os.path.join(root_dir, "scripts", script)
+        if os.path.isfile(script_path):
+            subprocess.call(["bash", script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return get_startup_status()
+
+
+def toggle_startup():
+    """Đảo trạng thái tự khởi động. Trả về trạng thái mới."""
+    cur = get_startup_status()
+    return set_startup(not cur)
+
+
 if __name__ == "__main__":  # test nhanh: python3 claude_usage_core.py
     u = fetch_usage()
     if u["ok"]:
